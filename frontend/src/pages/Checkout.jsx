@@ -57,7 +57,7 @@ const Checkout = () => {
 
   const handleRazorpayPayment = async () => {
     setProcessing(true);
-    setStatusMessage({ text: 'Initializing payment gateway...', type: 'info' });
+    setStatusMessage({ text: 'Processing payment...', type: 'info' });
 
     try {
       const orderRes = await fetch('/api/payment/order', {
@@ -69,23 +69,30 @@ const Checkout = () => {
       const orderData = await orderRes.json();
 
       if (!orderRes.ok || !orderData.id) {
-        // If live Razorpay gateway is in test mode or keys pending, provide seamless fallback
-        setStatusMessage({
-          text: 'Notice: Live gateway keys are in test sandbox. Switching to Instant Verified Checkout...',
-          type: 'info'
-        });
-        setTimeout(() => {
-          placeOrderDirectly(`sandbox_auto_${Date.now()}`);
-        }, 1200);
+        setStatusMessage({ text: orderData.message || 'Payment initialization failed. Please try again.', type: 'error' });
+        setProcessing(false);
+        return;
+      }
+
+      // Detect simulated / demo orders when live Razorpay credentials are not configured
+      if (orderData.id.startsWith('order_demo_') || orderData.id.startsWith('order_fallback_')) {
+        await placeOrderDirectly(`demo_payment_${Date.now()}`);
+        return;
+      }
+
+      const razorpayKey = orderData.key || process.env.REACT_APP_RAZORPAY_KEY;
+
+      if (!razorpayKey) {
+        await placeOrderDirectly(`demo_payment_${Date.now()}`);
         return;
       }
 
       const options = {
-        key: process.env.REACT_APP_RAZORPAY_KEY || 'rzp_test_shopnest',
+        key: razorpayKey,
         amount: orderData.amount,
         currency: orderData.currency || 'INR',
         name: 'ShopNest',
-        description: `Order Payment for ${user.name}`,
+        description: `Order Payment for ${user?.name || 'Customer'}`,
         order_id: orderData.id,
         handler: async function (response) {
           try {
@@ -126,11 +133,12 @@ const Checkout = () => {
         rzp1.open();
       } else {
         // Fallback if script blocked
-        placeOrderDirectly(`instant_verified_${Date.now()}`);
+        await placeOrderDirectly(`demo_payment_${Date.now()}`);
       }
     } catch (error) {
       console.error(error);
-      placeOrderDirectly(`verified_test_${Date.now()}`);
+      setStatusMessage({ text: 'Network error placing order.', type: 'error' });
+      setProcessing(false);
     }
   };
 

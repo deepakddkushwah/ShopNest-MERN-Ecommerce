@@ -33,7 +33,7 @@ const createOrder = async (req, res) => {
 
     const order = await instance.orders.create(options);
     if (!order) return res.status(500).json({ message: "Order creation failed" });
-    res.json(order);
+    res.json({ ...order, key: keyId });
   } catch (error) {
     console.error('Payment order creation error:', error.message);
     // Graceful fallback response
